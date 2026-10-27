@@ -4,4 +4,4 @@ Trying to find optimizations with current Ray Tracing technology, whether in 3D 
 Could pitch it as a presentation to Nvidia if the work is good enough
 
 Optimizing path tracing? It's very expensive compared to ray tracing.
-Find a way to tie this into world of warcraft forever
+Find a way to tie this into world of warcraft forever, could also be tied into other games like minecraft?

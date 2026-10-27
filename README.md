@@ -8,10 +8,11 @@ The proposal is in `docs/`, and the roles, schedule, and proof outline are in [`
 
 All official benchmark numbers are collected on a native (non-WSL) **Ubuntu 26.04.1 LTS** install, so differences come from the GPU and not the OS.
 
-| Owner | GPU | Architecture | Compute capability |
-|---|---|---|---|
-| Eugene | RTX 2070 Super | Turing (RT cores gen 1) | sm_75 |
-| Harsha | RTX 5070 | Blackwell (RT cores gen 4) | sm_120 |
+| Owner  | GPU                          | Architecture               | Compute capability |
+| ------ | ---------------------------- | -------------------------- | ------------------ |
+| Diego  | CPU - Intel Core Ultra 7 355 | N/A                        | N/A                |
+| Eugene | RTX 2070 Super               | Turing (RT cores gen 1)    | sm_75              |
+| Harsha | RTX 5070                     | Blackwell (RT cores gen 4) | sm_120             |
 
 Requirements on both machines:
 - CUDA Toolkit 13.4 (`cuda-toolkit-13-4` from NVIDIA's `ubuntu2604` repo)

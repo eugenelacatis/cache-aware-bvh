@@ -15,6 +15,7 @@ Read this section first. All of it came from reading the cited papers, and some 
 5. Everett's theorem covers only the capacities that the τ sweep actually reaches. It says nothing about the capacities in between. Our gap bound for those (T6b) is our own work, and the report has to present it that way.
 6. The Crofton constant depends on how the measure of lines is normalized (sources give π/4 or π/2 times surface area). Only ratios SA(B)/SA(A) appear in our proofs, so the constant cancels. T2 should say so explicitly.
 7. Corrections to the proposal's references: Haydel et al. now has a venue (above). Barbier and Paulin is Computer Graphics Forum 2025, presented at HPG 2025. Haydel's 15.8% and 31.7% figures come from one scene (San Miguel), measured in a simulator against the Vaidyanathan et al. compressed 6-wide BVH. Chou et al. (both papers) are hardware proposals evaluated in Vulkan-Sim.
+8. The proposal's related work has to separate our cache term from treelets and cache-friendly layouts, since both also aim to keep hot nodes on chip. Aila and Karras (2010) group nodes into treelets sized to fit in cache, Chou et al. group rays by treelet and prefetch treelets in hardware, and Yoon and Manocha (2006) reorder nodes in memory for locality. All three change where or when nodes are stored and leave the tree's shape alone. Our term changes the shape: the collapse is told which nodes are likely cached and builds the tree around them. The two can be combined, because a memory-aware tree can still be laid out or prefetched by treelet.
 
 ## Roles
 
@@ -30,7 +31,7 @@ In week 1 we fix two interfaces that everyone codes against: the binary tree/ray
 
 | Week | Eugene | Harsha | Diego |
 |---|---|---|---|
-| 1 (Oct 27) | CUDA and Nsight sanity check on the 2070S; file format spec with node byte sizes | Same check on the 5070; OBJ loader (Dragon) | Write the formal cache model; update the proposal's related work for Haydel et al. |
+| 1 (Oct 27) | CUDA and Nsight sanity check on the 2070S; file format spec with node byte sizes | Same check on the 5070; OBJ loader (Dragon) | Write the formal cache model; update the proposal's related work for Haydel et al. and for treelets and layouts (item 8) |
 | 2 (Nov 3) | Brute-force GPU tracer, 2-wide traversal | CPU reference tracer, binary SAH builder | Validators; draft T1 to T3 |
 | 3 (Nov 10) | 4-wide traversal, counters | Standard SAH collapse; log SA(c1) + SA(c2) vs SA(p) per node for T5 | T4 and T5; trace format and LRU simulator. Checkpoint: 2-wide vs 4-wide result |
 | 4 (Nov 17) | Trace dump; Sponza and Bistro loading | Memory-aware DP (and MSAH as τ high), leaf packing, cost evaluator | T6, T6b, T7 written; confirm simulated LRU misses stay under the T7 ceiling. Cross-review: each person checks one theorem |
@@ -38,6 +39,8 @@ In week 1 we fix two interfaces that everyone codes against: the binary tree/ray
 | 6 (Dec 1) | Report: method and GPU results | Report: builder and results | Final proof appendix, report integration, slides |
 
 The week 3 checkpoint matters because the 2-wide vs 4-wide comparison is already a result if the memory-aware work runs late.
+
+Stretch goal, only if the week 5 matrix finishes early: add spatial splits to the binary builder, with split leaves pointing at a shared primitive block so no triangle is duplicated, then rerun all collapses on the new tree. Haydel et al. list this as future work. It needs one new lemma, because T1's byte counting assumes each triangle sits in exactly one leaf.
 
 ## The proof
 
@@ -134,3 +137,4 @@ Checked against the papers or their publisher pages on Oct 26, 2026.
 13. Barbier, Paulin. Fused Collapsing for Wide BVH Construction. Computer Graphics Forum, 2025. doi:10.1111/cgf.70213
 14. Chou, Nowicki, Aamodt. Treelet Prefetching for Ray Tracing. MICRO 2023, 742–755.
 15. Chou, Aamodt. Treelet Accelerated Ray Tracing on GPUs. ASPLOS 2025, 1334–1347.
+16. Aila, Karras. Architecture Considerations for Tracing Incoherent Rays. HPG 2010, 113–122.

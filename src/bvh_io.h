@@ -1,6 +1,6 @@
 #pragma once
 
-// Host-side readers and writers for the tree and ray files (docs/FORMATS.md).
+// Host-side readers and writers for the tree, ray, and trace files (docs/FORMATS.md).
 
 #include <string>
 #include <vector>
@@ -33,5 +33,12 @@ TreeFile makeTree(const std::vector<typename NodeOf<W>::type>& nodes, const std:
 
 bool writeTree(const std::string& path, const TreeFile& tree, std::string& error);
 
+// Every triangle in the tree's leaf blocks, in node order. Used by the brute-force tracer.
+std::vector<Triangle> treeTriangles(const TreeFile& tree);
+
 bool readRays(const std::string& path, RayHeader& header, std::vector<Ray>& rays, std::string& error);
 bool writeRays(const std::string& path, RayKind kind, uint64_t seed, const std::vector<Ray>& rays, std::string& error);
+
+bool readTrace(const std::string& path, TraceHeader& header, std::vector<TraceEvent>& events, std::string& error);
+bool writeTrace(const std::string& path, TraceMode mode, uint32_t rayCount, uint32_t width,
+                const std::vector<TraceEvent>& events, std::string& error);

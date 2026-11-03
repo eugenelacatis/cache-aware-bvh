@@ -1,4 +1,4 @@
-// CPU tests for the file formats, reader, traversal, and ray generator.
+// CPU tests for the file formats, reader, traversal, ray generator, and trace dump.
 
 #include <algorithm>
 #include <cmath>
@@ -10,6 +10,7 @@
 
 #include "bvh_io.h"
 #include "raygen.h"
+#include "trace_dump.h"
 #include "traverse.h"
 
 static int failures = 0;
@@ -192,6 +193,123 @@ static void testTraversalMatchesBruteForce(const std::vector<Triangle>& tris, co
     std::printf("  W=%d: %zu rays, %d hits, %u nodes\n", W, rays.size(), hits, tree.header().nodeCount);
 }
 
+template <int W>
+static int childCount(const typename NodeOf<W>::type& node) {
+    int n = 0;
+    while (n < W && !refIsEmpty(node.child[n])) ++n;
+    return n;
+}
+
+// All-hit must fetch exactly the nodes and leaves whose boxes the ray crosses.
+// Brute force: test every child box in the tree. This relies on child boxes
+// lying inside their parent's box, which the test builder guarantees.
+template <int W>
+static RayStats bruteForceAllHit(const TreeFile& tree, const Ray& ray) {
+    const TreeHeader& h = tree.header();
+    const auto* nodes = tree.nodes<W>();
+    RayInv ri = makeRayInv(ray);
+    RayStats s{0, 0};
+    float t;
+    if (intersectBox(h.sceneBox, ri, ray.tmin, ray.tmax, t)) s.boxesVisited += childCount<W>(nodes[0]);
+    for (uint32_t i = 0; i < h.nodeCount; ++i)
+        for (int c = 0; c < childCount<W>(nodes[i]); ++c) {
+            if (!intersectBox(nodes[i].box[c], ri, ray.tmin, ray.tmax, t)) continue;
+            uint32_t ref = nodes[i].child[c];
+            if (refIsLeaf(ref))
+                s.trianglesTested += refLeafCount(ref);
+            else
+                s.boxesVisited += childCount<W>(nodes[refNode(ref)]);
+        }
+    return s;
+}
+
+template <int W>
+static void testAllHitAndCounters(const std::vector<Triangle>& tris, const std::vector<Ray>& rays) {
+    TestBuilder builder(tris);
+    TreeFile tree = builder.tree<W>();
+    const TreeHeader& h = tree.header();
+    int hitMismatch = 0, countMismatch = 0, closestOver = 0;
+    double allBoxes = 0, closestBoxes = 0;
+    for (const Ray& r : rays) {
+        CountProbe all, closest;
+        Hit a = traceAll<W>(tree.nodes<W>(), tree.triSection(), h.sceneBox, r, all);
+        Hit c = traceClosest<W>(tree.nodes<W>(), tree.triSection(), h.sceneBox, r, closest);
+        Hit b = bruteForce(tris, r);
+        RayStats e = bruteForceAllHit<W>(tree, r);
+        if (a.t != b.t || a.t != c.t) ++hitMismatch;
+        if (all.stats.boxesVisited != e.boxesVisited || all.stats.trianglesTested != e.trianglesTested) ++countMismatch;
+        if (closest.stats.boxesVisited > all.stats.boxesVisited ||
+            closest.stats.trianglesTested > all.stats.trianglesTested)
+            ++closestOver;
+        allBoxes += all.stats.boxesVisited;
+        closestBoxes += closest.stats.boxesVisited;
+    }
+    CHECK(hitMismatch == 0, "W=%d: %d rays: all-hit, closest-hit, brute force disagree on t", W, hitMismatch);
+    CHECK(countMismatch == 0, "W=%d: %d rays: all-hit counters differ from brute force", W, countMismatch);
+    CHECK(closestOver == 0, "W=%d: %d rays: closest-hit did more work than all-hit", W, closestOver);
+    CHECK(closestBoxes < allBoxes, "W=%d: closest-hit culled nothing, test is too weak", W);
+    std::printf("  W=%d: boxes per ray %.1f all-hit, %.1f closest-hit\n", W, allBoxes / rays.size(),
+                closestBoxes / rays.size());
+}
+
+template <int W>
+static void testTraceDump(const std::vector<Triangle>& tris, const std::vector<Ray>& rays, const std::string& dir) {
+    TestBuilder builder(tris);
+    TreeFile tree = builder.tree<W>();
+    const TreeHeader& h = tree.header();
+    for (TraceMode mode : {TraceMode::ClosestHit, TraceMode::AllHit}) {
+        const char* name = mode == TraceMode::AllHit ? "all-hit" : "closest-hit";
+        std::vector<RayStats> stats;
+        std::vector<TraceEvent> events = dumpTrace(tree, rays, mode, &stats);
+        CHECK(stats.size() == rays.size(), "W=%d %s: one RayStats per ray", W, name);
+
+        // Sorted by ray, each ray starts at the root, and every event decodes to
+        // a node or a leaf block inside its section.
+        std::vector<uint32_t> nodeEvents(rays.size(), 0), triEvents(rays.size(), 0);
+        int bad = 0;
+        uint32_t nodeSector0 = uint32_t(h.nodeOffset / kSectorBytes), triSector0 = uint32_t(h.triOffset / kSectorBytes);
+        for (size_t i = 0; i < events.size(); ++i) {
+            const TraceEvent& e = events[i];
+            bool first = i == 0 || events[i - 1].ray != e.ray;
+            if (i > 0 && events[i - 1].ray > e.ray) ++bad;
+            if (e.kind == uint8_t(AccessKind::Node)) {
+                uint64_t off = uint64_t(e.firstSector) * kSectorBytes - h.nodeOffset;
+                if (e.sectorCount != h.nodeBytes / kSectorBytes || off % h.nodeBytes != 0 ||
+                    off / h.nodeBytes >= h.nodeCount)
+                    ++bad;
+                if (first && e.firstSector != nodeSector0) ++bad;
+                ++nodeEvents[e.ray];
+            } else {
+                if (e.kind != uint8_t(AccessKind::TriBlock) || first || e.firstSector < triSector0 ||
+                    e.firstSector + e.sectorCount > triSector0 + h.triSectorCount)
+                    ++bad;
+                ++triEvents[e.ray];
+            }
+        }
+        CHECK(bad == 0, "W=%d %s: %d malformed or out-of-order events", W, name, bad);
+
+        // The counters and the events describe the same fetches.
+        int disagree = 0;
+        for (size_t r = 0; r < rays.size(); ++r)
+            if ((stats[r].boxesVisited == 0) != (nodeEvents[r] == 0) ||
+                (stats[r].trianglesTested == 0) != (triEvents[r] == 0) ||
+                stats[r].boxesVisited < nodeEvents[r] || stats[r].boxesVisited > nodeEvents[r] * W)
+                ++disagree;
+        CHECK(disagree == 0, "W=%d %s: %d rays where counters and events disagree", W, name, disagree);
+
+        std::string path = dir + "/test.trace", error;
+        CHECK(writeTrace(path, mode, uint32_t(rays.size()), W, events, error), "%s", error.c_str());
+        TraceHeader th;
+        std::vector<TraceEvent> back;
+        CHECK(readTrace(path, th, back, error), "%s", error.c_str());
+        CHECK(th.mode == uint32_t(mode) && th.rayCount == rays.size() && th.width == W &&
+                  th.eventCount == events.size() &&
+                  std::memcmp(back.data(), events.data(), events.size() * sizeof(TraceEvent)) == 0,
+              "W=%d %s: trace file round trip", W, name);
+        std::printf("  W=%d %s: %zu events\n", W, name, events.size());
+    }
+}
+
 static void testRoundTrip(const std::vector<Triangle>& tris, const std::string& dir) {
     TestBuilder builder(tris);
     TreeFile tree = builder.tree<4>();
@@ -214,6 +332,11 @@ static void testRoundTrip(const std::vector<Triangle>& tris, const std::string& 
                 for (uint32_t k = 0; k < refLeafCount(ref); ++k) ++seen[t[k].id];
             }
     CHECK(std::all_of(seen.begin(), seen.end(), [](int s) { return s == 1; }), "triangle missing or duplicated");
+
+    std::vector<Triangle> flat = treeTriangles(back);
+    std::vector<int> flatSeen(tris.size(), 0);
+    for (const Triangle& t : flat) ++flatSeen[t.id];
+    CHECK(flat.size() == tris.size() && flatSeen == seen, "treeTriangles missed or repeated a triangle");
 
     std::vector<Ray> rays = isotropicLines(h.sceneBox, 1000, 7), raysBack;
     RayHeader rh;
@@ -286,6 +409,12 @@ int main(int argc, char** argv) {
     Box fewBox = emptyBox();
     for (const Triangle& t : few) grow(fewBox, t.v0), grow(fewBox, t.v1), grow(fewBox, t.v2);
     testTraversalMatchesBruteForce<4>(few, isotropicLines(fewBox, 20000, 3));
+    std::printf("all-hit and counters vs brute force\n");
+    testAllHitAndCounters<2>(tris, rays);
+    testAllHitAndCounters<4>(tris, rays);
+    std::printf("trace dump\n");
+    testTraceDump<2>(tris, rays, dir);
+    testTraceDump<4>(tris, rays, dir);
     std::printf("file round trip\n");
     testRoundTrip(tris, dir);
     std::printf("validator\n");

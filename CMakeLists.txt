@@ -20,11 +20,15 @@ set(CMAKE_CUDA_STANDARD_REQUIRED ON)
 add_library(bvhcore STATIC
     src/bvh_io.cpp
     src/raygen.cpp
+    src/trace_dump.cpp
 )
 target_include_directories(bvhcore PUBLIC src)
 
 add_executable(raygen src/raygen_main.cpp)
 target_link_libraries(raygen PRIVATE bvhcore)
+
+add_executable(tracedump src/tracedump_main.cpp)
+target_link_libraries(tracedump PRIVATE bvhcore)
 
 enable_testing()
 add_executable(bvh_tests tests/test_bvh.cpp)
@@ -39,3 +43,7 @@ target_include_directories(pathtracer PRIVATE src)
 
 # -lineinfo maps SASS back to source lines in Nsight Compute without disabling optimizations.
 target_compile_options(pathtracer PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:-lineinfo>)
+
+add_executable(bruteforce src/bruteforce.cu)
+target_link_libraries(bruteforce PRIVATE bvhcore)
+target_compile_options(bruteforce PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:-lineinfo>)

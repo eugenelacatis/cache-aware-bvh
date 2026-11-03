@@ -8,6 +8,7 @@ namespace {
 
 constexpr char kTreeMagic[8] = {'C', 'A', 'B', 'V', 'H', 'T', 'R', 'E'};
 constexpr char kRayMagic[8] = {'C', 'A', 'B', 'V', 'H', 'R', 'A', 'Y'};
+constexpr char kTraceMagic[8] = {'C', 'A', 'B', 'V', 'H', 'T', 'R', 'C'};
 
 uint64_t alignUp(uint64_t x, uint64_t a) { return (x + a - 1) / a * a; }
 
@@ -173,6 +174,32 @@ bool writeTree(const std::string& path, const TreeFile& tree, std::string& error
     return writeFile(path, tree.bytes.data(), tree.bytes.size(), error);
 }
 
+namespace {
+
+template <int W>
+void collectTriangles(const TreeFile& tree, std::vector<Triangle>& out) {
+    const auto* nodes = tree.nodes<W>();
+    for (uint32_t i = 0; i < tree.header().nodeCount; ++i)
+        for (uint32_t ref : nodes[i].child) {
+            if (refIsEmpty(ref) || !refIsLeaf(ref)) continue;
+            const auto* t = reinterpret_cast<const Triangle*>(tree.triSection() +
+                                                              uint64_t(refLeafSector(ref)) * kSectorBytes);
+            out.insert(out.end(), t, t + refLeafCount(ref));
+        }
+}
+
+}  // namespace
+
+std::vector<Triangle> treeTriangles(const TreeFile& tree) {
+    std::vector<Triangle> tris;
+    tris.reserve(tree.header().triCount);
+    if (tree.header().width == 2)
+        collectTriangles<2>(tree, tris);
+    else
+        collectTriangles<4>(tree, tris);
+    return tris;
+}
+
 bool readRays(const std::string& path, RayHeader& header, std::vector<Ray>& rays, std::string& error) {
     std::vector<unsigned char> bytes;
     if (!readFile(path, bytes, error)) return false;
@@ -205,5 +232,41 @@ bool writeRays(const std::string& path, RayKind kind, uint64_t seed, const std::
     std::vector<unsigned char> bytes(sizeof(h) + rays.size() * sizeof(Ray));
     std::memcpy(bytes.data(), &h, sizeof(h));
     std::memcpy(bytes.data() + sizeof(h), rays.data(), rays.size() * sizeof(Ray));
+    return writeFile(path, bytes.data(), bytes.size(), error);
+}
+
+bool readTrace(const std::string& path, TraceHeader& header, std::vector<TraceEvent>& events, std::string& error) {
+    std::vector<unsigned char> bytes;
+    if (!readFile(path, bytes, error)) return false;
+    if (bytes.size() < sizeof(TraceHeader)) {
+        error = "file smaller than the header";
+        return false;
+    }
+    std::memcpy(&header, bytes.data(), sizeof(header));
+    if (std::memcmp(header.magic, kTraceMagic, 8) != 0 || header.version != kFormatVersion) {
+        error = "not a version 1 trace file";
+        return false;
+    }
+    if (bytes.size() != sizeof(TraceHeader) + header.eventCount * sizeof(TraceEvent)) {
+        error = "event count does not match file size";
+        return false;
+    }
+    events.resize(header.eventCount);
+    std::memcpy(events.data(), bytes.data() + sizeof(TraceHeader), events.size() * sizeof(TraceEvent));
+    return true;
+}
+
+bool writeTrace(const std::string& path, TraceMode mode, uint32_t rayCount, uint32_t width,
+                const std::vector<TraceEvent>& events, std::string& error) {
+    TraceHeader h{};
+    std::memcpy(h.magic, kTraceMagic, 8);
+    h.version = kFormatVersion;
+    h.mode = static_cast<uint32_t>(mode);
+    h.rayCount = rayCount;
+    h.width = width;
+    h.eventCount = events.size();
+    std::vector<unsigned char> bytes(sizeof(h) + events.size() * sizeof(TraceEvent));
+    std::memcpy(bytes.data(), &h, sizeof(h));
+    std::memcpy(bytes.data() + sizeof(h), events.data(), events.size() * sizeof(TraceEvent));
     return writeFile(path, bytes.data(), bytes.size(), error);
 }

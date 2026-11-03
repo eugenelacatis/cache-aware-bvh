@@ -106,7 +106,7 @@ Ray, 32 B: `org[3]`, `tmin`, `dir[3]`, `tmax`. Directions are unit length. A ray
 
 ## Node-access trace (`.trace`)
 
-The GPU trace dump writes this file, and the LRU simulator reads it. A 32 B header is followed by `eventCount` events of 12 B each.
+The GPU trace dump writes this file, and the LRU simulator reads it. Until the GPU dump exists, `tracedump <tree.bvh> <in.rays> <out.trace> [closest|all]` writes the same file from the CPU traversal. A 32 B header is followed by `eventCount` events of 12 B each.
 
 | Offset | Size | Field | Meaning |
 |---|---|---|---|

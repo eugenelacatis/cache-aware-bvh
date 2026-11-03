@@ -28,6 +28,11 @@ int main(int argc, char** argv) {
     cudaDeviceProp prop;
     CUDA_CHECK(cudaGetDeviceProperties(&prop, 0));
     std::printf("GPU: %s (sm_%d%d)\n", prop.name, prop.major, prop.minor);
+    std::printf("L2 cache: %d bytes (%.1f MB)\n", prop.l2CacheSize, prop.l2CacheSize / (1024.0 * 1024.0));
+
+    size_t l2FetchGranularity = 0;
+    CUDA_CHECK(cudaDeviceGetLimit(&l2FetchGranularity, cudaLimitMaxL2FetchGranularity));
+    std::printf("Max L2 fetch granularity: %zu bytes\n", l2FetchGranularity);
 
     float3* dFb = nullptr;
     CUDA_CHECK(cudaMalloc(&dFb, width * height * sizeof(float3)));

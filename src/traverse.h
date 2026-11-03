@@ -1,6 +1,7 @@
 #pragma once
 
-// Ray-box, ray-triangle, and closest-hit traversal for 2-wide and 4-wide trees.
+// Ray-box, ray-triangle, and closest-hit and all-hit traversal for 2-wide and
+// 4-wide trees, with per-ray counters and a hook for the node-access trace.
 // Plain C++ marked HD, so the same code runs in CUDA kernels and CPU tests.
 
 #include <cmath>
@@ -67,11 +68,35 @@ HD inline const Triangle* leafTriangles(const unsigned char* triSection, uint32_
     return reinterpret_cast<const Triangle*>(triSection + uint64_t(refLeafSector(ref)) * kSectorBytes);
 }
 
-// Closest-hit traversal. Children are pushed far to near so the nearest box is
+// Hooks the traversal calls on every fetch. A probe can count work or record
+// the node-access trace; NoProbe compiles away.
+struct NoProbe {
+    HD void node(uint32_t /*index*/, int /*children*/) {}
+    HD void leaf(uint32_t /*ref*/) {}
+};
+
+// Per-ray counters. boxesVisited counts child boxes tested inside fetched
+// nodes (the scene box test is not counted). trianglesTested counts
+// ray-triangle tests, which is every triangle of every fetched leaf.
+struct RayStats {
+    uint32_t boxesVisited;
+    uint32_t trianglesTested;
+};
+
+struct CountProbe {
+    RayStats stats{0, 0};
+    HD void node(uint32_t, int children) { stats.boxesVisited += uint32_t(children); }
+    HD void leaf(uint32_t ref) { stats.trianglesTested += refLeafCount(ref); }
+};
+
+// Shared traversal. Children are pushed far to near so the nearest box is
 // popped first. `sceneBox` is the root's box from the file header.
-template <int W>
-HD inline Hit traceClosest(const typename NodeOf<W>::type* nodes, const unsigned char* triSection, const Box& sceneBox,
-                           const Ray& ray) {
+// Closest-hit (AllHit = false) skips boxes beyond the current hit.
+// All-hit (AllHit = true) visits every node and leaf whose box the ray crosses
+// within [tmin, tmax]; it still returns the closest hit.
+template <int W, bool AllHit, class Probe>
+HD inline Hit traverse(const typename NodeOf<W>::type* nodes, const unsigned char* triSection, const Box& sceneBox,
+                       const Ray& ray, Probe& probe) {
     Hit hit{ray.tmax, UINT32_MAX};
     RayInv ri = makeRayInv(ray);
     float tEnter;
@@ -86,9 +111,10 @@ HD inline Hit traceClosest(const typename NodeOf<W>::type* nodes, const unsigned
     while (sp > 0) {
         --sp;
         uint32_t ref = stackRef[sp];
-        if (stackT[sp] > hit.t) continue;
+        if (!AllHit && stackT[sp] > hit.t) continue;
 
         if (refIsLeaf(ref)) {
+            probe.leaf(ref);
             const Triangle* tris = leafTriangles(triSection, ref);
             uint32_t n = refLeafCount(ref);
             for (uint32_t i = 0; i < n; ++i) {
@@ -102,13 +128,15 @@ HD inline Hit traceClosest(const typename NodeOf<W>::type* nodes, const unsigned
         }
 
         const auto& node = nodes[refNode(ref)];
+        const float tFar = AllHit ? ray.tmax : hit.t;
         uint32_t hitRef[W];
         float hitT[W];
-        int count = 0;
+        int count = 0, children = 0;
         for (int c = 0; c < W; ++c) {
             if (refIsEmpty(node.child[c])) break;
+            ++children;
             float t;
-            if (!intersectBox(node.box[c], ri, ray.tmin, hit.t, t)) continue;
+            if (!intersectBox(node.box[c], ri, ray.tmin, tFar, t)) continue;
             // Insertion sort, farthest first.
             int j = count++;
             while (j > 0 && hitT[j - 1] < t) {
@@ -119,10 +147,30 @@ HD inline Hit traceClosest(const typename NodeOf<W>::type* nodes, const unsigned
             hitT[j] = t;
             hitRef[j] = node.child[c];
         }
+        probe.node(refNode(ref), children);
         for (int i = 0; i < count; ++i) {  // validateTree guarantees room
             stackRef[sp] = hitRef[i];
             stackT[sp++] = hitT[i];
         }
     }
     return hit;
+}
+
+template <int W, class Probe>
+HD inline Hit traceClosest(const typename NodeOf<W>::type* nodes, const unsigned char* triSection, const Box& sceneBox,
+                           const Ray& ray, Probe& probe) {
+    return traverse<W, false>(nodes, triSection, sceneBox, ray, probe);
+}
+
+template <int W>
+HD inline Hit traceClosest(const typename NodeOf<W>::type* nodes, const unsigned char* triSection, const Box& sceneBox,
+                           const Ray& ray) {
+    NoProbe probe;
+    return traverse<W, false>(nodes, triSection, sceneBox, ray, probe);
+}
+
+template <int W, class Probe>
+HD inline Hit traceAll(const typename NodeOf<W>::type* nodes, const unsigned char* triSection, const Box& sceneBox,
+                       const Ray& ray, Probe& probe) {
+    return traverse<W, true>(nodes, triSection, sceneBox, ray, probe);
 }

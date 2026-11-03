@@ -9,13 +9,15 @@ The proposal is in `docs/`, and the roles, schedule, and proof outline are in [`
 | Path | Contents |
 | --- | --- |
 | `src/main.cu` | Week 1 sanity check: prints the GPU name and compute capability, runs one kernel, and writes a test image |
+| `src/bruteforce.cu` | `bruteforce` tool: GPU reference tracer that tests every ray against every triangle and checks the hits against CPU traversal. Not yet tested on a GPU |
 | `src/cuda_check.h` | `CUDA_CHECK` macro that exits with the CUDA error name, file, and line |
 | `src/bvh_format.h` | Structs for the tree, ray, and trace files in `docs/FORMATS.md` |
-| `src/bvh_io.cpp` | Reads, writes, and validates tree and ray files |
-| `src/traverse.h` | Ray-box and ray-triangle tests and closest-hit traversal for 2-wide and 4-wide trees, shared by CPU and GPU |
+| `src/bvh_io.cpp` | Reads, writes, and validates tree and ray files, and reads and writes trace files |
+| `src/traverse.h` | Ray-box and ray-triangle tests, closest-hit and all-hit traversal for 2-wide and 4-wide trees, and per-ray counters (boxes visited, triangles tested), shared by CPU and GPU |
 | `src/raygen.cpp`, `src/raygen_main.cpp` | `raygen` tool that writes isotropic random lines for a tree |
-| `tests/test_bvh.cpp` | CPU tests: traversal against brute force, file round trips, validator, and the isotropy of the random lines |
-| `CMakeLists.txt` | Builds `pathtracer` for sm_75 and sm_120 in Release with `-lineinfo`, plus `raygen` and `bvh_tests` |
+| `src/trace_dump.cpp`, `src/tracedump_main.cpp` | `tracedump` tool that runs the traversal on the CPU and writes a node-access trace |
+| `tests/test_bvh.cpp` | CPU tests: closest-hit, all-hit, and counters against brute force, the trace dump, file round trips, validator, and the isotropy of the random lines |
+| `CMakeLists.txt` | Builds `pathtracer` for sm_75 and sm_120 in Release with `-lineinfo`, plus `bruteforce`, `raygen`, `tracedump`, and `bvh_tests` |
 | `docs/FORMATS.md` | Byte layouts of the tree, ray, and node-access trace files |
 | `docs/PROJECT_PLAN.md` | Roles, schedule, cache model, theorems, and benchmark matrix |
 | `docs/LEARNING.md` | Notes from the earlier path tracer idea, not part of the current plan |
@@ -31,6 +33,13 @@ cmake --build build -j
 ```
 
 Run the CPU tests with `ctest --test-dir build`.
+
+To check the GPU against the CPU on a tree, generate rays and run the brute-force tracer. It exits nonzero if any ray's hit differs:
+
+```sh
+./build/raygen scene.bvh scene.rays 100000
+./build/bruteforce scene.bvh scene.rays
+```
 
 The build defaults to Release, because only Release numbers count as benchmarks. To build for one GPU only, pass `-DCMAKE_CUDA_ARCHITECTURES=75` (2070 Super) or `-DCMAKE_CUDA_ARCHITECTURES=120` (5070) to the first command.
 

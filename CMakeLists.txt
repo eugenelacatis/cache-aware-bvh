@@ -17,6 +17,20 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CUDA_STANDARD 17)
 set(CMAKE_CUDA_STANDARD_REQUIRED ON)
 
+add_library(bvhcore STATIC
+    src/bvh_io.cpp
+    src/raygen.cpp
+)
+target_include_directories(bvhcore PUBLIC src)
+
+add_executable(raygen src/raygen_main.cpp)
+target_link_libraries(raygen PRIVATE bvhcore)
+
+enable_testing()
+add_executable(bvh_tests tests/test_bvh.cpp)
+target_link_libraries(bvh_tests PRIVATE bvhcore)
+add_test(NAME bvh_tests COMMAND bvh_tests ${CMAKE_CURRENT_BINARY_DIR})
+
 add_executable(pathtracer
     src/main.cu
 )

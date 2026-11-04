@@ -16,7 +16,9 @@ The proposal is in `docs/`, and the roles, schedule, and proof outline are in [`
 | `src/traverse.h` | Ray-box and ray-triangle tests, closest-hit and all-hit traversal for 2-wide and 4-wide trees, and per-ray counters (boxes visited, triangles tested), shared by CPU and GPU |
 | `src/raygen.cpp`, `src/raygen_main.cpp` | `raygen` tool that writes isotropic random lines for a tree |
 | `src/trace_dump.cpp`, `src/tracedump_main.cpp` | `tracedump` tool that runs the traversal on the CPU and writes a node-access trace |
+| `tools/cabvh.py` | Python reader that loads tree, ray, and trace files into numpy arrays and decodes leaf references and trace sectors back to node indices |
 | `tests/test_bvh.cpp` | CPU tests: closest-hit, all-hit, and counters against brute force, the trace dump, file round trips, validator, and the isotropy of the random lines |
+| `tests/test_cabvh.py` | Checks `cabvh.py` against files written by `bvh_tests` and `tracedump` |
 | `CMakeLists.txt` | Builds `pathtracer` for sm_75 and sm_120 in Release with `-lineinfo`, plus `bruteforce`, `raygen`, `tracedump`, and `bvh_tests` |
 | `docs/FORMATS.md` | Byte layouts of the tree, ray, and node-access trace files |
 | `docs/PROJECT_PLAN.md` | Roles, schedule, cache model, theorems, and benchmark matrix |
@@ -32,7 +34,7 @@ cmake --build build -j
 ./build/pathtracer out.ppm
 ```
 
-Run the CPU tests with `ctest --test-dir build`.
+Run the CPU tests with `ctest --test-dir build`. Then run `pytest tests/test_cabvh.py` to check the Python reader against the files the C++ tests wrote. It needs numpy and looks for the binaries in `build/`, or in the directory named by `CABVH_BIN`.
 
 To check the GPU against the CPU on a tree, generate rays and run the brute-force tracer. It exits nonzero if any ray's hit differs:
 

@@ -19,15 +19,20 @@ set(CMAKE_CUDA_STANDARD_REQUIRED ON)
 
 add_library(bvhcore STATIC
     src/bvh/bvh_io.cpp
+    src/mesh/obj_loader.cpp
     src/rays/raygen.cpp
     src/trace/trace_dump.cpp
 )
 target_include_directories(bvhcore PUBLIC
     src/bvh
     src/cuda
+    src/mesh
     src/rays
     src/trace
 )
+
+add_executable(objinfo src/tools/objinfo_main.cpp)
+target_link_libraries(objinfo PRIVATE bvhcore)
 
 add_executable(raygen src/tools/raygen_main.cpp)
 target_link_libraries(raygen PRIVATE bvhcore)

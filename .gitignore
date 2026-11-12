@@ -5,6 +5,9 @@ build/
 /CMakeUserPresets.json
 /compile_commands.json
 
+# Local mesh inputs
+/meshes/
+
 # Generated geometry, rays, and traces
 *.bvh
 *.rays

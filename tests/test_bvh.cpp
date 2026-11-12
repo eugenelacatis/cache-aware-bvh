@@ -4,11 +4,13 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <fstream>
 #include <random>
 #include <string>
 #include <vector>
 
 #include "bvh_io.h"
+#include "obj_loader.h"
 #include "raygen.h"
 #include "trace_dump.h"
 #include "traverse.h"
@@ -389,6 +391,43 @@ static void testIsotropicLines() {
     std::printf("  P(inner | outer) = %.4f, SA ratio = %.4f\n", measured, expected);
 }
 
+static void testObjLoader(const std::string& dir) {
+    const std::string path = dir + "/test_mesh.obj";
+    {
+        std::ofstream obj(path);
+        obj << "  v +0 0 0\n"
+               "v 2 0 0\n"
+               "v 0 3 0\n"
+               "f 1 2 3 # first triangle\n"
+               "v 0 0 -4\n"
+               "vn 0 0 1\n"
+               "f -1//1 -3//1 -2//1\n";
+    }
+
+    std::vector<Triangle> triangles;
+    std::string error;
+    const bool loaded = loadObj(path, triangles, error);
+    CHECK(loaded, "%s", error.c_str());
+    if (!loaded) return;
+
+    const Triangle expected[] = {
+        {{0, 0, 0}, {2, 0, 0}, {0, 3, 0}, 0, {}},
+        {{0, 0, -4}, {2, 0, 0}, {0, 3, 0}, 1, {}},
+    };
+    CHECK(triangles.size() == 2 && std::memcmp(triangles.data(), expected, sizeof(expected)) == 0,
+          "OBJ positions, winding, or triangle IDs differ");
+
+    const std::string invalidPath = dir + "/invalid_mesh.obj";
+    {
+        std::ofstream obj(invalidPath);
+        obj << "v 0 0 0\nv 2 0 0\nv 0 3 0\nf 1 2 3\nf 1 2 4\n";
+    }
+    CHECK(!loadObj(invalidPath, triangles, error) && error.find("line 5") != std::string::npos,
+          "expected an error on the out-of-range index: %s", error.c_str());
+    CHECK(triangles.size() == 2 && std::memcmp(triangles.data(), expected, sizeof(expected)) == 0,
+          "failed import changed the output triangles");
+}
+
 int main(int argc, char** argv) {
     std::string dir = argc > 1 ? argv[1] : ".";
     std::vector<Triangle> tris = randomTriangles(3000, 1);
@@ -417,6 +456,8 @@ int main(int argc, char** argv) {
     testTraceDump<4>(tris, rays, dir);
     std::printf("file round trip\n");
     testRoundTrip(tris, dir);
+    std::printf("OBJ loader\n");
+    testObjLoader(dir);
     std::printf("validator\n");
     testValidatorRejects(tris);
     std::printf("isotropic lines\n");

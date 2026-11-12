@@ -1,4 +1,16 @@
+# CMake builds and local configuration
 build/
+/build-*/
+/cmake-build-*/
+/CMakeUserPresets.json
+/compile_commands.json
+
+# Generated geometry, rays, and traces
+*.bvh
+*.rays
+*.trace
+
+# Rendered images and profiler reports
 *.ppm
 *.ncu-rep
 *.nsys-rep

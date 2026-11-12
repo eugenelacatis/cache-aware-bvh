@@ -1,6 +1,6 @@
 # File formats
 
-Version 1. The builder writes tree files, `raygen` writes ray files, the GPU kernels read both, and the trace dump writes node-access traces for the LRU simulator. The C++ structs in `src/bvh_format.h` match these layouts byte for byte, and `static_assert`s check the sizes. `src/bvh_io.cpp` reads, writes, and validates tree and ray files.
+Version 1. The builder writes tree files, `raygen` writes ray files, the GPU kernels read both, and the trace dump writes node-access traces for the LRU simulator. The C++ structs in `src/bvh/bvh_format.h` match these layouts byte for byte, and `static_assert`s check the sizes. `src/bvh/bvh_io.cpp` reads, writes, and validates tree and ray files.
 
 All files are little-endian. Floats are IEEE 754 binary32. Offsets are in bytes from the start of the file.
 

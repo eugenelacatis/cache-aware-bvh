@@ -12,6 +12,7 @@
 #include "bvh_io.h"
 #include "obj_loader.h"
 #include "raygen.h"
+#include "sah_builder.h"
 #include "trace_dump.h"
 #include "traverse.h"
 
@@ -428,6 +429,35 @@ static void testObjLoader(const std::string& dir) {
           "failed import changed the output triangles");
 }
 
+static void testBinarySahBuilder() {
+    const Triangle base{{0, 0, 0}, {1, 0, 0}, {0, 1, 0}, 0, {}};
+    // A single outlier should split from a cluster too large for one leaf.
+    std::vector<Triangle> triangles(kMaxLeafTris + 2, base);
+    for (uint32_t i = 0; i < triangles.size(); ++i) triangles[i].id = i;
+    for (float* vertex : {triangles[0].v0, triangles[0].v1, triangles[0].v2}) vertex[0] += 100.0f;
+
+    TreeFile tree;
+    std::string error;
+    const bool built = buildBinarySah(triangles, tree, error);
+    CHECK(built, "%s", error.c_str());
+    if (!built) return;
+
+    const Node2& root = tree.nodes<2>()[0];
+    CHECK(!refIsLeaf(root.child[0]) && refLeafCount(root.child[1]) == 1,
+          "SAH should separate the outlier instead of splitting the scene in half");
+    CHECK(std::fabs(root.p[1] - 1.0f / 101.0f) < 1e-7f, "incorrect outlier visit probability: %g", root.p[1]);
+
+    auto packed = treeTriangles(tree);
+    std::sort(packed.begin(), packed.end(), [](const Triangle& a, const Triangle& b) { return a.id < b.id; });
+    CHECK(packed.size() == triangles.size() &&
+              std::memcmp(packed.data(), triangles.data(), triangles.size() * sizeof(Triangle)) == 0,
+          "packed leaves must preserve every input triangle and ID exactly once");
+
+    const Ray ray{{100.25f, 0.25f, 1.0f}, 0.0f, {0, 0, -1}, 2.0f};
+    const Hit hit = traceClosest<2>(tree.nodes<2>(), tree.triSection(), tree.header().sceneBox, ray);
+    CHECK(hit.triId == 0 && hit.t == 1.0f, "expected to hit the outlier, got triangle %u at %g", hit.triId, hit.t);
+}
+
 int main(int argc, char** argv) {
     std::string dir = argc > 1 ? argv[1] : ".";
     std::vector<Triangle> tris = randomTriangles(3000, 1);
@@ -458,6 +488,8 @@ int main(int argc, char** argv) {
     testRoundTrip(tris, dir);
     std::printf("OBJ loader\n");
     testObjLoader(dir);
+    std::printf("binary SAH builder\n");
+    testBinarySahBuilder();
     std::printf("validator\n");
     testValidatorRejects(tris);
     std::printf("isotropic lines\n");

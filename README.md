@@ -8,14 +8,14 @@ The proposal is in `docs/`, and the roles, schedule, and proof outline are in [`
 
 | Path | Contents |
 | --- | --- |
-| [src/bvh/](src/bvh/) | Tree, ray, and trace file formats and I/O, tree validation, and CPU/GPU traversal for 2-wide and 4-wide trees |
+| [src/bvh/](src/bvh/) | Binary SAH builder, file formats and I/O, tree validation, and CPU/GPU traversal for 2-wide and 4-wide trees |
 | [src/cuda/](src/cuda/) | Host/device annotations and CUDA error checking |
 | [src/mesh/](src/mesh/) | Loads triangulated OBJ meshes into the project's triangle records |
 | [src/rays/](src/rays/) | Generates isotropic random lines for a tree |
 | [src/trace/](src/trace/) | Runs traversal on the CPU and records node accesses |
-| [src/tools/](src/tools/) | Entry points for `pathtracer` (GPU sanity check), `bruteforce` (GPU reference tracer), `objinfo`, `raygen`, and `tracedump` |
-| `tests/test_bvh.cpp` | CPU tests for traversal, counters, trace dumps, file round trips, validation, ray generation, and OBJ import |
-| `CMakeLists.txt` | Builds `pathtracer` for sm_75 and sm_120 in Release with `-lineinfo`, plus `bruteforce`, `objinfo`, `raygen`, `tracedump`, and `bvh_tests` |
+| [src/tools/](src/tools/) | Entry points for `pathtracer` (GPU sanity check), `bruteforce` (GPU reference tracer), `bvhbuild`, `objinfo`, `raygen`, and `tracedump` |
+| `tests/test_bvh.cpp` | CPU tests for traversal, counters, trace dumps, file round trips, validation, ray generation, OBJ import, and SAH building |
+| `CMakeLists.txt` | Builds `pathtracer` for sm_75 and sm_120 in Release with `-lineinfo`, plus `bruteforce`, `bvhbuild`, `objinfo`, `raygen`, `tracedump`, and `bvh_tests` |
 | `docs/FORMATS.md` | Byte layouts of the tree, ray, and node-access trace files |
 | `docs/PROJECT_PLAN.md` | Roles, schedule, cache model, theorems, and benchmark matrix |
 | `docs/LEARNING.md` | Notes from the earlier path tracer idea, not part of the current plan |
@@ -32,13 +32,14 @@ cmake --build build -j
 
 Run the CPU tests with `ctest --test-dir build`.
 
-Keep local mesh inputs in the Git-ignored `meshes/` directory. For the Stanford Dragon, convert `dragon_vrip.ply` from the reconstruction archive to `meshes/dragon.obj`, then run `./build/objinfo meshes/dragon.obj` to print its triangle count. [Stanford Dragon reconstruction](https://graphics.stanford.edu/pub/3Dscanrep/dragon/)
+Keep local mesh inputs in the Git-ignored `meshes/` directory. For the Stanford Dragon, convert `dragon_vrip.ply` from the reconstruction archive to a triangulated `meshes/dragon.obj`. [Stanford Dragon reconstruction](https://graphics.stanford.edu/pub/3Dscanrep/dragon/)
 
-To check the GPU against the CPU on a tree, generate rays and run the brute-force tracer. It exits nonzero if any ray's hit differs:
+Build a 2-wide SAH tree from the OBJ, generate rays, and compare CPU traversal with brute force on the GPU:
 
 ```sh
-./build/raygen scene.bvh scene.rays 100000
-./build/bruteforce scene.bvh scene.rays
+./build/bvhbuild meshes/dragon.obj build/dragon.bvh
+./build/raygen build/dragon.bvh build/dragon.rays 1024
+./build/bruteforce build/dragon.bvh build/dragon.rays
 ```
 
 The build defaults to Release, because only Release numbers count as benchmarks. To build for one GPU only, pass `-DCMAKE_CUDA_ARCHITECTURES=75` (2070 Super) or `-DCMAKE_CUDA_ARCHITECTURES=120` (5070) to the first command.
